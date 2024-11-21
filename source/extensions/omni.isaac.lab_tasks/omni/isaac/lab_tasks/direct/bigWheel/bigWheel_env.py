@@ -71,17 +71,17 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     )
 
     # reward scales //TODO: Update reward scales
-    lin_vel_reward_scale = 1.5  # 线速度奖励
-    yaw_rate_reward_scale = 0.1  # yaw 转向速度奖励
-    z_vel_reward_scale = -0.5  #  垂直速度奖励
-    ang_vel_reward_scale = -0.5  # pitch roll角速度奖励
+    lin_vel_reward_scale = 1.0  # 线速度奖励
+    yaw_rate_reward_scale = 0.5  # yaw 转向速度奖励
+    z_vel_reward_scale = -2.0  #  垂直速度奖励
+    ang_vel_reward_scale = -0.05  # pitch roll角速度奖励
     joint_torque_reward_scale_inner = -2.5e-5  # 内轮关节扭矩奖励
     joint_accel_reward_scale_inner = -2.5e-7  # 内轮关节加速度奖励
     joint_torque_reward_scale_outer = -2.5e-5  # 外轮关节扭矩奖励
     joint_accel_reward_scale_outer = -2.5e-7  # 外轮关节加速度奖励
-    action_rate_reward_scale_inner = -0.005  # 内轮动作速率奖励
-    action_rate_reward_scale_outer = -0.005  # 外轮动作速率奖励
-    flat_orientation_reward_scale = -1.0  # 平面方向奖励
+    action_rate_reward_scale_inner = -0.01  # 内轮动作速率奖励
+    action_rate_reward_scale_outer = -0.01  # 外轮动作速率奖励
+    flat_orientation_reward_scale = -5.0  # 平面方向奖励
 
 
 class BigWheelEnv(DirectRLEnv):
@@ -134,6 +134,23 @@ class BigWheelEnv(DirectRLEnv):
             self.num_envs, 1, device=self.device
         )  # chassis 速度 x方向
         self._base_id, _ = self._contact_sensor.find_bodies("body")
+        # Logging
+        self._episode_sums = {
+            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+            for key in [
+                "track_lin_vel_xy_exp",
+                "track_ang_vel_z_exp",
+                "lin_vel_z_l2",
+                "ang_vel_xy_l2",
+                "dof_torques_inner_l2",
+                "dof_torques_outer_l2",
+                "dof_acc_inner_l2",
+                "dof_acc_outer_l2",
+                "action_rate_inner_l2",
+                "action_rate_outer_l2",
+                "flat_orientation_l2",
+            ]
+        }
 
     def _setup_scene(self):
         self.bigWheel = Articulation(self.cfg.robot_cfg)
@@ -286,6 +303,9 @@ class BigWheelEnv(DirectRLEnv):
             * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        # Logging
+        for key, value in rewards.items():
+            self._episode_sums[key] += value
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -313,10 +333,17 @@ class BigWheelEnv(DirectRLEnv):
         self.previous_actions[env_ids] = 0.0
         # Sample new commands
         self._commands[env_ids, 0] = (
-            torch.zeros_like(self._commands[env_ids, 0])
-            .uniform_(2.0, 7.0) *  # 生成范围在 [5, 10] 的随机数
-            (torch.randint(0, 2, self._commands[env_ids, 0].shape, device=self._commands.device) * 2 - 1)  # 随机生成正负号
-        ) # x
+            torch.zeros_like(self._commands[env_ids, 0]).uniform_(
+                0.0, 3.0
+            )  # 生成范围在 [5, 10] 的随机数
+            * (
+                torch.randint(
+                    0, 2, self._commands[env_ids, 0].shape, device=self._commands.device
+                )
+                * 2
+                - 1
+            )  # 随机生成正负号
+        )  # x
 
         self._commands[env_ids, 1] = torch.zeros_like(
             self._commands[env_ids, 1]
@@ -329,3 +356,15 @@ class BigWheelEnv(DirectRLEnv):
         self.bigWheel.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.bigWheel.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self.bigWheel.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        # Logging
+        extras = dict()
+        for key in self._episode_sums.keys():
+            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
+            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
+            self._episode_sums[key][env_ids] = 0.0 
+        self.extras["log"] = dict()
+        self.extras["log"].update(extras)
+        extras = dict()
+        extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        self.extras["log"].update(extras)

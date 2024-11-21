@@ -71,7 +71,7 @@ params:
     e_clip: 0.2
     horizon_length: 32
     minibatch_size: 16384
-    mini_epochs: 16
+    mini_epochs: 5
     critic_coef: 4
     clip_value: True
     seq_length: 4
