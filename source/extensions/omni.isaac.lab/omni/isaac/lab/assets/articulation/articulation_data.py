@@ -6,7 +6,7 @@
 import torch
 import weakref
 
-import omni.physics.tensors.impl.api as physx
+import omni.physics.tensors.impl.api as physx 
 
 import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.utils.buffers import TimestampedBuffer

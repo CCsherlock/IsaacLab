@@ -1,0 +1,36 @@
+{
+    "MicroPython.executeButton": [
+        {
+            "text": "▶",
+            "tooltip": "运行",
+            "alignment": "left",
+            "command": "extension.executeFile",
+            "priority": 3.5
+        }
+    ],
+    "MicroPython.syncButton": [
+        {
+            "text": "$(sync)",
+            "tooltip": "同步",
+            "alignment": "left",
+            "command": "extension.execute",
+            "priority": 4
+        }
+    ],
+    "spellright.language": [
+        "en"
+    ],
+    "spellright.documentTypes": [
+        "markdown",
+        "latex",
+        "plaintext",
+        "yaml"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/sherlock/.local/share/ov/pkg/isaac_sim-2023.1.1",
+        "./extensions/omni.isaac.lab",
+        "./extensions/omni.isaac.lab_assets",
+        "./extensions/omni.isaac.*"
+        "./extensions/omni.ph
+    ]
+}

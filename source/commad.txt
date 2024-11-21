@@ -1,0 +1,2 @@
+ .\isaaclab.bat -p source\standalone\workflows\rl_games\train.py --task Isaac-BigWheel
+  .\isaaclab.bat -p source\standalone\workflows\rl_games\play.py --task Isaac-BigWheel

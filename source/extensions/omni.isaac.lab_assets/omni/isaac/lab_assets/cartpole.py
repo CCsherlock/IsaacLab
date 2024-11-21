@@ -9,7 +9,7 @@
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.actuators import ImplicitActuatorCfg
 from omni.isaac.lab.assets import ArticulationCfg
-from omni.isaac.lab.utils.assets import ISAACLAB_NUCLEUS_DIR
+from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 
 ##
 # Configuration
@@ -17,7 +17,7 @@ from omni.isaac.lab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 CARTPOLE_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/Classic/Cartpole/cartpole.usd",
+        usd_path=f"{ISAAC_NUCLEUS_DIR}/Robots/Classic/Cartpole/cartpole.usd",
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,
             max_linear_velocity=1000.0,
@@ -45,7 +45,11 @@ CARTPOLE_CFG = ArticulationCfg(
             damping=10.0,
         ),
         "pole_actuator": ImplicitActuatorCfg(
-            joint_names_expr=["cart_to_pole"], effort_limit=400.0, velocity_limit=100.0, stiffness=0.0, damping=0.0
+            joint_names_expr=["cart_to_pole"], 
+            effort_limit=400.0, 
+            velocity_limit=100.0, 
+            stiffness=0.0, 
+            damping=0.0
         ),
     },
 )
