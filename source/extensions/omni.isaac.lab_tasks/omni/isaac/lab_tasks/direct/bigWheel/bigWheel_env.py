@@ -33,7 +33,7 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     action_scale_inner = 4.0  # [N]
     action_scale_outer = 5.0  # [N]
     action_space = 4  # 驱动数
-    observation_space = 25  # 观测数
+    observation_space = 26  # 观测数
     state_space = 0
     episode_length_s = 10.0  # 最大存活时间
     # simulation
@@ -73,6 +73,7 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     # reward scales //TODO: Update reward scales
     lin_vel_reward_scale = 1.0  # 线速度奖励
     yaw_rate_reward_scale = 0.5  # yaw 转向速度奖励
+    height_reward_scale = 1.5  # 高度奖励
     z_vel_reward_scale = -2.0  #  垂直速度奖励
     ang_vel_reward_scale = -0.05  # pitch roll角速度奖励
     joint_torque_reward_scale_inner = -2.5e-5  # 内轮关节扭矩奖励
@@ -126,8 +127,8 @@ class BigWheelEnv(DirectRLEnv):
         self.joint_pos = self.bigWheel.data.joint_pos
         self.joint_vel = self.bigWheel.data.joint_vel
 
-        # X/Y linear velocity and yaw angular velocity commands
-        self._commands = torch.zeros(self.num_envs, 2, device=self.device)
+        # X linear velocity and yaw angular velocity commands hight
+        self._commands = torch.zeros(self.num_envs, 3, device=self.device)
         self.theta = torch.zeros(self.num_envs, 2, device=self.device)
         self.pitch = torch.zeros(self.num_envs, 1, device=self.device)
         self.velocity_chassis = torch.zeros(
@@ -149,6 +150,7 @@ class BigWheelEnv(DirectRLEnv):
                 "action_rate_inner_l2",
                 "action_rate_outer_l2",
                 "flat_orientation_l2",
+                "height_reward",
             ]
         }
 
@@ -216,7 +218,7 @@ class BigWheelEnv(DirectRLEnv):
                     self.bigWheel.data.joint_pos,  # 4 关节位置
                     self.bigWheel.data.joint_vel,  # 4 关节速度
                     self.theta,  # 2 内轮抬升角
-                    self._commands,  # 2 指令
+                    self._commands,  # 3 指令
                     self.actions,  # 4 动作
                 )
                 if tensor is not None
@@ -237,6 +239,11 @@ class BigWheelEnv(DirectRLEnv):
             self._commands[:, 1] - self.bigWheel.data.root_ang_vel_b[:, 2]
         )
         yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
+        # height tracking
+        height_error = torch.square(
+            self._commands[:, 2] - self.bigWheel.data.root_pos_w[:, 2]
+        )
+        height_error_mapped = torch.exp(-height_error / 0.1)
         # z velocity tracking
         z_vel_error = torch.square(self.bigWheel.data.root_lin_vel_b[:, 2])
         # angular velocity x/y pitch/roll
@@ -272,14 +279,20 @@ class BigWheelEnv(DirectRLEnv):
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped
             * self.cfg.lin_vel_reward_scale
-            * self.step_dt,
+            * self.step_dt
+            * 2.0,
             "track_ang_vel_z_exp": yaw_rate_error_mapped
             * self.cfg.yaw_rate_reward_scale
-            * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            * self.step_dt
+            * 1.5,
+            "lin_vel_z_l2": z_vel_error
+            * self.cfg.z_vel_reward_scale
+            * self.step_dt
+            * 0.5,
             "ang_vel_xy_l2": ang_vel_error
             * self.cfg.ang_vel_reward_scale
-            * self.step_dt,
+            * self.step_dt
+            * 0.5,
             "dof_torques_inner_l2": joint_torques_inner
             * self.cfg.joint_torque_reward_scale_inner
             * self.step_dt,
@@ -301,6 +314,10 @@ class BigWheelEnv(DirectRLEnv):
             "flat_orientation_l2": flat_orientation
             * self.cfg.flat_orientation_reward_scale
             * self.step_dt,
+            "height_reward": height_error_mapped
+            * self.cfg.height_reward_scale
+            * self.step_dt
+            * 0.7,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -348,6 +365,10 @@ class BigWheelEnv(DirectRLEnv):
         self._commands[env_ids, 1] = torch.zeros_like(
             self._commands[env_ids, 1]
         ).uniform_(-0.5, 0.5)  # w
+
+        self._commands[env_ids, 2] = torch.zeros_like(
+            self._commands[env_ids, 2]
+        ).uniform_(0.065, 0.380)
         # Reset robot state
         joint_pos = self.bigWheel.data.default_joint_pos[env_ids]
         joint_vel = self.bigWheel.data.default_joint_vel[env_ids]
@@ -360,11 +381,17 @@ class BigWheelEnv(DirectRLEnv):
         extras = dict()
         for key in self._episode_sums.keys():
             episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
-            self._episode_sums[key][env_ids] = 0.0 
+            extras["Episode_Reward/" + key] = (
+                episodic_sum_avg / self.max_episode_length_s
+            )
+            self._episode_sums[key][env_ids] = 0.0
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
         extras = dict()
-        extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        extras["Episode_Termination/base_contact"] = torch.count_nonzero(
+            self.reset_terminated[env_ids]
+        ).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(
+            self.reset_time_outs[env_ids]
+        ).item()
         self.extras["log"].update(extras)
