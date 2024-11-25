@@ -19,6 +19,7 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.devices.keyboard import Se3Keyboard
 
 # from omni.isaac.lab.utils.math import sample_uniform
 from omni.isaac.lab.sensors import ContactSensorCfg, ContactSensor
@@ -30,7 +31,7 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 5.0
-    action_scale_inner = 4.0  # [N]
+    action_scale_inner = 12.0  # [N]
     action_scale_outer = 5.0  # [N]
     action_space = 4  # 驱动数
     observation_space = 26  # 观测数
@@ -71,17 +72,17 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     )
 
     # reward scales //TODO: Update reward scales
-    lin_vel_reward_scale = 1.0  # 线速度奖励
-    yaw_rate_reward_scale = 0.5  # yaw 转向速度奖励
-    height_reward_scale = 1.5  # 高度奖励
-    z_vel_reward_scale = -2.0  #  垂直速度奖励
-    ang_vel_reward_scale = -0.05  # pitch roll角速度奖励
+    lin_vel_reward_scale = 5.0  # 线速度奖励
+    yaw_rate_reward_scale = 0.75  # yaw 转向速度奖励
+    height_reward_scale = 1.05  # 高度奖励
+    z_vel_reward_scale = -1.0  #  垂直速度奖励
+    ang_vel_reward_scale = -0.03  # pitch roll角速度奖励
     joint_torque_reward_scale_inner = -2.5e-5  # 内轮关节扭矩奖励
-    joint_accel_reward_scale_inner = -2.5e-7  # 内轮关节加速度奖励
+    joint_accel_reward_scale_inner = -2.5e-6  # 内轮关节加速度奖励
     joint_torque_reward_scale_outer = -2.5e-5  # 外轮关节扭矩奖励
     joint_accel_reward_scale_outer = -2.5e-7  # 外轮关节加速度奖励
     action_rate_reward_scale_inner = -0.01  # 内轮动作速率奖励
-    action_rate_reward_scale_outer = -0.01  # 外轮动作速率奖励
+    action_rate_reward_scale_outer = -0.005  # 外轮动作速率奖励
     flat_orientation_reward_scale = -5.0  # 平面方向奖励
 
 
@@ -89,6 +90,10 @@ class BigWheelEnv(DirectRLEnv):
     cfg: BigWheelEnvCfg
     LEFT = 0
     RIGHT = 1
+    PLAY = 0
+    MAX_LIN_VEL_X = 10.0
+    MAX_ANGLE_VEL_Z = 1.5
+    MAX_HEIGHT = 0.380
     # 物理参数
     outerWheel_radius = 0.225  # 外轮半径
     chassis_width = 0.32  # 底盘宽度
@@ -171,9 +176,22 @@ class BigWheelEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
+        self.keyboard_controller = Se3Keyboard(
+            pos_sensitivity=0.05, rot_sensitivity=0.1
+        )
+
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions[:, :2] = self.action_scale_inner * actions.clone()[:, :2]
         self.actions[:, 2:] = self.action_scale_outer * actions.clone()[:, 2:]
+        if self.PLAY:
+            delta_pose, gripper_action = self.keyboard_controller.advance()
+            self._commands[:, 0] += delta_pose[0] * 0.5
+            self._commands[:, 1] += delta_pose[1] * 0.5
+            self._commands[:, 2] += delta_pose[2] * 0.01
+            self._commands[:, 2] = torch.clamp(self._commands[:, 2], 0.065, 0.380)
+            if gripper_action:
+                self._commands = torch.zeros_like(self._commands)
+            print(self._commands[0])
 
     def _apply_action(self) -> None:
         # self.actions = torch.zeros_like(self.actions)
@@ -233,7 +251,7 @@ class BigWheelEnv(DirectRLEnv):
         lin_vel_error = torch.square(
             self._commands[:, 0] - self.bigWheel.data.root_lin_vel_b[:, 0]
         )
-        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.5)
         # yaw rate tracking
         yaw_rate_error = torch.square(
             self._commands[:, 1] - self.bigWheel.data.root_ang_vel_b[:, 2]
@@ -279,20 +297,14 @@ class BigWheelEnv(DirectRLEnv):
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped
             * self.cfg.lin_vel_reward_scale
-            * self.step_dt
-            * 2.0,
+            * self.step_dt,
             "track_ang_vel_z_exp": yaw_rate_error_mapped
             * self.cfg.yaw_rate_reward_scale
-            * self.step_dt
-            * 1.5,
-            "lin_vel_z_l2": z_vel_error
-            * self.cfg.z_vel_reward_scale
-            * self.step_dt
-            * 0.5,
+            * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error
             * self.cfg.ang_vel_reward_scale
-            * self.step_dt
-            * 0.5,
+            * self.step_dt,
             "dof_torques_inner_l2": joint_torques_inner
             * self.cfg.joint_torque_reward_scale_inner
             * self.step_dt,
@@ -316,8 +328,7 @@ class BigWheelEnv(DirectRLEnv):
             * self.step_dt,
             "height_reward": height_error_mapped
             * self.cfg.height_reward_scale
-            * self.step_dt
-            * 0.7,
+            * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -349,26 +360,30 @@ class BigWheelEnv(DirectRLEnv):
         self.actions[env_ids] = 0.0
         self.previous_actions[env_ids] = 0.0
         # Sample new commands
-        self._commands[env_ids, 0] = (
-            torch.zeros_like(self._commands[env_ids, 0]).uniform_(
-                0.0, 3.0
-            )  # 生成范围在 [5, 10] 的随机数
-            * (
-                torch.randint(
-                    0, 2, self._commands[env_ids, 0].shape, device=self._commands.device
-                )
-                * 2
-                - 1
-            )  # 随机生成正负号
-        )  # x
+        if self.PLAY == 0:
+            self._commands[env_ids, 0] = (
+                torch.zeros_like(self._commands[env_ids, 0]).uniform_(
+                    0.0, 10.0
+                )  # 生成范围在 [5, 10] 的随机数
+                * (
+                    torch.randint(
+                        0,
+                        2,
+                        self._commands[env_ids, 0].shape,
+                        device=self._commands.device,
+                    )
+                    * 2
+                    - 1
+                )  # 随机生成正负号
+            )  # x
 
-        self._commands[env_ids, 1] = torch.zeros_like(
-            self._commands[env_ids, 1]
-        ).uniform_(-0.5, 0.5)  # w
+            self._commands[env_ids, 1] = torch.zeros_like(
+                self._commands[env_ids, 1]
+            ).uniform_(-1.5, 1.5)  # w
 
-        self._commands[env_ids, 2] = torch.zeros_like(
-            self._commands[env_ids, 2]
-        ).uniform_(0.065, 0.380)
+            self._commands[env_ids, 2] = torch.zeros_like(
+                self._commands[env_ids, 2]
+            ).uniform_(0.065, 0.380)
         # Reset robot state
         joint_pos = self.bigWheel.data.default_joint_pos[env_ids]
         joint_vel = self.bigWheel.data.default_joint_vel[env_ids]

@@ -1,0 +1,12 @@
+model:
+  params:
+    actions_num: 4
+    input_shape: [26]
+    num_seqs: 4
+    value_size: 1
+  normalize_value: true
+  normalize_input: true
+
+data_source:
+  type: sensor
+  config: sensor_config.yaml
