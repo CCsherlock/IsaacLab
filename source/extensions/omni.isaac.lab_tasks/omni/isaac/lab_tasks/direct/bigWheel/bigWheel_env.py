@@ -34,7 +34,7 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     action_scale_inner = 12.0  # [N]
     action_scale_outer = 5.0  # [N]
     action_space = 4  # 驱动数
-    observation_space = 26  # 观测数
+    observation_space = 21  # 观测数
     state_space = 0
     episode_length_s = 10.0  # 最大存活时间
     # simulation
@@ -135,7 +135,9 @@ class BigWheelEnv(DirectRLEnv):
         # X linear velocity and yaw angular velocity commands hight
         self._commands = torch.zeros(self.num_envs, 3, device=self.device)
         self.theta = torch.zeros(self.num_envs, 2, device=self.device)
+        self.theta_vel = torch.zeros(self.num_envs, 2, device=self.device)
         self.pitch = torch.zeros(self.num_envs, 1, device=self.device)
+        self.euler_angle = torch.zeros(self.num_envs, 3, device=self.device)
         self.velocity_chassis = torch.zeros(
             self.num_envs, 1, device=self.device
         )  # chassis 速度 x方向
@@ -204,6 +206,7 @@ class BigWheelEnv(DirectRLEnv):
         euler_angles = math_utils.euler_xyz_from_quat(
             self.bigWheel.data.root_quat_w
         )  # 获取欧拉角元组
+        self.euler_angle = torch.stack(euler_angles, dim=1)
         self.pitch = euler_angles[1].squeeze()  # 提取第二列并去除多余维度
         self.theta[:, self.LEFT] = (
             self.bigWheel.data.joint_pos[:, self._innerWheel_left_dof_idx].squeeze()
@@ -213,6 +216,15 @@ class BigWheelEnv(DirectRLEnv):
             self.bigWheel.data.joint_pos[:, self._innerWheel_right_dof_idx].squeeze()
             + self.pitch
         )
+        self.theta_vel[:, self.LEFT] = (
+            self.bigWheel.data.joint_vel[:, self._innerWheel_left_dof_idx].squeeze()
+            + self.bigWheel.data.root_ang_vel_b[:, 1].squeeze()
+        )
+        self.theta_vel[:, self.RIGHT] = (
+            self.bigWheel.data.joint_vel[:, self._innerWheel_right_dof_idx].squeeze()
+            + self.bigWheel.data.root_ang_vel_b[:, 1].squeeze()
+        )
+
         # 计算底盘速度 = (左外轮速度 + 右外轮速度) * 外轮半径 * 0.5
         self.velocity_chassis = (
             (
@@ -226,15 +238,17 @@ class BigWheelEnv(DirectRLEnv):
             * self.outerWheel_radius
             * 0.5
         )
+        self.velocity_chassis = self.velocity_chassis.squeeze(1)
+
         obs = torch.cat(
             [
                 tensor
                 for tensor in (
-                    self.bigWheel.data.root_lin_vel_b,  # 3 机体线速度
-                    self.bigWheel.data.root_ang_vel_b,  # 3 机体角速度
+                    self.euler_angle,  # 3 欧拉角 roll pitch yaw
                     self.bigWheel.data.projected_gravity_b,  # 3 重力投影
-                    self.bigWheel.data.joint_pos,  # 4 关节位置
-                    self.bigWheel.data.joint_vel,  # 4 关节速度
+                    self.velocity_chassis,  # 1 机体线速度x
+                    self.bigWheel.data.root_ang_vel_b,  # 3 机体角速度 roll pitch yaw
+                    self.theta_vel,  # 2 内轮抬升角速度
                     self.theta,  # 2 内轮抬升角
                     self._commands,  # 3 指令
                     self.actions,  # 4 动作
@@ -370,7 +384,7 @@ class BigWheelEnv(DirectRLEnv):
                         0,
                         2,
                         self._commands[env_ids, 0].shape,
-                        device=self._commands.device,
+                        device=self.device,
                     )
                     * 2
                     - 1
