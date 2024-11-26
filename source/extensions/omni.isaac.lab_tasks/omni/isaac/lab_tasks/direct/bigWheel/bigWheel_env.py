@@ -81,8 +81,8 @@ class BigWheelEnvCfg(DirectRLEnvCfg):
     joint_accel_reward_scale_inner = -2.5e-6  # 内轮关节加速度奖励
     joint_torque_reward_scale_outer = -2.5e-5  # 外轮关节扭矩奖励
     joint_accel_reward_scale_outer = -2.5e-7  # 外轮关节加速度奖励
-    action_rate_reward_scale_inner = -0.01  # 内轮动作速率奖励
-    action_rate_reward_scale_outer = -0.005  # 外轮动作速率奖励
+    action_rate_reward_scale_inner = -0.01  # 内轮动作速率奖励 扭矩变化率
+    action_rate_reward_scale_outer = -0.005  # 外轮动作速率奖励 扭矩变化率
     flat_orientation_reward_scale = -5.0  # 平面方向奖励
 
 
@@ -395,9 +395,11 @@ class BigWheelEnv(DirectRLEnv):
                 self._commands[env_ids, 1]
             ).uniform_(-1.5, 1.5)  # w
 
-            self._commands[env_ids, 2] = torch.zeros_like(
-                self._commands[env_ids, 2]
-            ).uniform_(0.065, 0.380)
+            # 生成 0 或 1 来随机选择 0.065 或 0.380
+            self._commands[env_ids, 2] = torch.tensor([0.065, 0.380],device=self.device)[
+                torch.randint(0, 2, (len(env_ids),))
+            ]
+
         # Reset robot state
         joint_pos = self.bigWheel.data.default_joint_pos[env_ids]
         joint_vel = self.bigWheel.data.default_joint_vel[env_ids]
