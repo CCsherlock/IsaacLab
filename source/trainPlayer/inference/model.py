@@ -20,7 +20,7 @@ class InferenceModel:
 
             model_config = {
                 "actions_num": 4,
-                "input_shape": [26],
+                "input_shape": [21],
                 "num_seqs": 4,
                 "value_size": 1,
                 "normalize_value": True,

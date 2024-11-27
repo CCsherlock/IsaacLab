@@ -5,3 +5,7 @@ conda activate isaaclab
 cd D:\Master\program\IsaacLab
 .\isaaclab.bat -p source\standalone\workflows\rl_games\train.py --task Isaac-BigWheel
 .\isaaclab.bat -p source\standalone\workflows\rl_games\play.py --task Isaac-BigWheel --num_envs 1
+
+cd D:\Master\program\IsaacLab\source\trainPlayer
+
+python .\main.py
