@@ -1,7 +1,7 @@
 from dataProcess.data_loader import DataLoader
 from inference.model import InferenceModel
 from communication.message_handler import MessageHandler
-import time
+# import time
 import torch
 def main():
     # 配置文件和模型权重路径
