@@ -30,7 +30,7 @@ class EventCfg:
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "asset_cfg": SceneEntityCfg("bigWheel", body_names=".*"),
             "static_friction_range": (0.8, 0.8),
             "dynamic_friction_range": (0.6, 0.6),
             "restitution_range": (0.0, 0.0),
@@ -42,8 +42,8 @@ class EventCfg:
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="body"),
-            "mass_distribution_params": (-5.0, 5.0),
+            "asset_cfg": SceneEntityCfg("bigWheel", body_names="body"),
+            "mass_distribution_params": (-0.5, 0.5),
             "operation": "add",
         },
     )
@@ -54,13 +54,12 @@ class BigWheelCFlatEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 5.0
-    action_scale_inner = 4.0  # [N]
+    action_scale_inner = 12.0  # [N]
     action_scale_outer = 5.0  # [N]
     action_space = 4  # 驱动数
-    observation_space = 25  # 观测数
+    observation_space = 21  # 观测数
     state_space = 0
     episode_length_s = 10.0  # 最大存活时间
-
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 200,
@@ -75,31 +74,8 @@ class BigWheelCFlatEnvCfg(DirectRLEnvCfg):
         ),
     )
 
-    terrain = TerrainImporterCfg(
-        prim_path="/World/ground",
-        terrain_type="plane",
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-            restitution=0.0,
-        ),
-        debug_vis=False,
-    )
-    # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=1024, env_spacing=4.0, replicate_physics=True
-    )
-
-    # events
-    events: EventCfg = EventCfg()
-
     # robot
-    robot_cfg: ArticulationCfg = BIGWHEEL_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot"
-    )
+    robot: ArticulationCfg = BIGWHEEL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=3,
@@ -111,18 +87,12 @@ class BigWheelCFlatEnvCfg(DirectRLEnvCfg):
     outerWheel_left_dof_name = "outerWheelLeft_joint"
     outerWheel_right_dof_name = "outerWheelRight_joint"
 
-    # reward scales //TODO: Update reward scales
-    lin_vel_reward_scale = 1.0  # 线速度奖励
-    yaw_rate_reward_scale = 0.5  # yaw 转向速度奖励
-    z_vel_reward_scale = -2.0  #  垂直速度奖励
-    ang_vel_reward_scale = -0.05  # pitch roll角速度奖励
-    joint_torque_reward_scale_inner = -2.5e-5  # 内轮关节扭矩奖励
-    joint_accel_reward_scale_inner = -2.5e-7  # 内轮关节加速度奖励
-    joint_torque_reward_scale_outer = -2.5e-5  # 外轮关节扭矩奖励
-    joint_accel_reward_scale_outer = -2.5e-7  # 外轮关节加速度奖励
-    action_rate_reward_scale_inner = -0.01  # 内轮动作速率奖励
-    action_rate_reward_scale_outer = -0.01  # 外轮动作速率奖励
-    flat_orientation_reward_scale = -5.0  # 平面方向奖励
+    # scene
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=1024, env_spacing=4.0, replicate_physics=True
+    )
+    # events
+    events: EventCfg = EventCfg()
 
 
 @configclass
@@ -159,5 +129,46 @@ class BigWheelCRoughEnvCfg(BigWheelCFlatEnvCfg):
         mesh_prim_paths=["/World/ground"],
     )
 
-    # reward scales (override from flat config)
-    flat_orientation_reward_scale = 0.0
+
+@configclass
+class BigWheelEnvCfg(DirectRLEnvCfg):
+    # env
+    decimation = 2
+    episode_length_s = 5.0
+    action_scale_inner = 12.0  # [N]
+    action_scale_outer = 5.0  # [N]
+    action_space = 4  # 驱动数
+    observation_space = 21  # 观测数
+    state_space = 0
+    episode_length_s = 10.0  # 最大存活时间
+    # simulation
+    sim: SimulationCfg = SimulationCfg(
+        dt=1 / 120,
+        render_interval=decimation,
+        disable_contact_processing=True,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
+    )
+
+    # robot
+    robot: ArticulationCfg = BIGWHEEL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    contact_sensor: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/.*",
+        history_length=3,
+        update_period=0.005,
+        track_air_time=False,
+    )
+    innerWheel_left_dof_name = "innerWheelLeft_joint"
+    innerWheel_right_dof_name = "innerWheelRight_joint"
+    outerWheel_left_dof_name = "outerWheelLeft_joint"
+    outerWheel_right_dof_name = "outerWheelRight_joint"
+
+    # scene
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=1024, env_spacing=4.0, replicate_physics=True
+    )

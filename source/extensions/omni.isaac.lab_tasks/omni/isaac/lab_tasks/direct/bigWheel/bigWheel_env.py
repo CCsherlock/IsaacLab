@@ -9,103 +9,45 @@ from __future__ import annotations
 import torch
 from collections.abc import Sequence
 
-# import gymnasium as gym
-from omni.isaac.lab_assets.bigWheel import BIGWHEEL_CFG
-
 import omni.isaac.lab.sim as sim_utils
-from omni.isaac.lab.assets import Articulation, ArticulationCfg
-from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
-from omni.isaac.lab.scene import InteractiveSceneCfg
-from omni.isaac.lab.sim import SimulationCfg
-from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.assets import Articulation
+from omni.isaac.lab.envs import DirectRLEnv
+from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane  # noqa: F401
 from omni.isaac.lab.devices.keyboard import Se3Keyboard
-from omni.isaac.lab.markers import VisualizationMarkersCfg, VisualizationMarkers
-from omni.isaac.lab.markers.config import (
-    BLUE_ARROW_X_MARKER_CFG,
-    GREEN_ARROW_X_MARKER_CFG,
-)
 
 # from omni.isaac.lab.utils.math import sample_uniform
-from omni.isaac.lab.sensors import ContactSensorCfg, ContactSensor
+from omni.isaac.lab.sensors import ContactSensor
 import omni.isaac.lab.utils.math as math_utils
+import sys
 
 
-@configclass
-class BigWheelEnvCfg(DirectRLEnvCfg):
-    # env
-    decimation = 2
-    episode_length_s = 5.0
-    action_scale_inner = 12.0  # [N]
-    action_scale_outer = 5.0  # [N]
-    action_space = 4  # 驱动数
-    observation_space = 21  # 观测数
-    state_space = 0
-    episode_length_s = 10.0  # 最大存活时间
-    # simulation
-    sim: SimulationCfg = SimulationCfg(
-        dt=1 / 120,
-        render_interval=decimation,
-        disable_contact_processing=True,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-            restitution=0.0,
-        ),
-    )
-
-    # robot
-    robot_cfg: ArticulationCfg = BIGWHEEL_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot"
-    )
-    contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*",
-        history_length=3,
-        update_period=0.005,
-        track_air_time=False,
-    )
-    innerWheel_left_dof_name = "innerWheelLeft_joint"
-    innerWheel_right_dof_name = "innerWheelRight_joint"
-    outerWheel_left_dof_name = "outerWheelLeft_joint"
-    outerWheel_right_dof_name = "outerWheelRight_joint"
-
-    # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=1024, env_spacing=4.0, replicate_physics=True
-    )
-
-    # reward scales
-    lin_vel_reward_scale = 5.0  # 线速度奖励 0.3
-    yaw_rate_reward_scale = 1.0  # yaw 转向速度奖励 0.1
-    velocity_coupling_reward_scale = 0.0  # 速度耦合奖励 0.7
-    height_reward_scale = 5.0  # 高度奖励
-    z_vel_reward_scale = -1.0  # 垂直速度奖励
-    ang_vel_reward_scale = -0.03  # pitch roll角速度奖励
-    joint_torque_reward_scale_inner = -2.5e-5  # 内轮关节扭矩奖励
-    joint_accel_reward_scale_inner = -2.5e-6  # 内轮关节加速度奖励
-    joint_torque_reward_scale_outer = -2.5e-5  # 外轮关节扭矩奖励
-    joint_accel_reward_scale_outer = -2.5e-7  # 外轮关节加速度奖励
-    action_rate_reward_scale_inner = -0.001  # 内轮动作速率奖励 扭矩变化率
-    action_rate_reward_scale_outer = -0.001  # 外轮动作速率奖励 扭矩变化率
-    flat_orientation_reward_scale = -3.5  # 重力投影方向奖励
-
+sys.path.append(
+    r"D:\Master\program\IsaacLab\source\extensions\omni.isaac.lab_tasks\omni\isaac\lab_tasks\direct\bigWheel"
+)
+from bigWheel_env_cfg import BigWheelCFlatEnvCfg, BigWheelCRoughEnvCfg, BigWheelEnvCfg  # noqa: F401
+from trainRewardsCfg import TrainRewards
+from markVisualizer import MarkVisualizer
 
 class BigWheelEnv(DirectRLEnv):
-    cfg: BigWheelEnvCfg
+    cfg: BigWheelCFlatEnvCfg | BigWheelCRoughEnvCfg
     LEFT = 0
     RIGHT = 1
     PLAY = 0
     MAX_LIN_VEL_X = 10.0
-    MAX_ANGLE_VEL_Z = 1.5
-    MAX_HEIGHT = 0.380
+    MAX_ANGLE_VEL_Z = 0.5
+    MAX_HEIGHT = 0.4
+    MIN_HEIGHT = 0.065
     # 物理参数
     outerWheel_radius = 0.225  # 外轮半径
     chassis_width = 0.32  # 底盘宽度
     outerWheel_radio = 5  # 外轮减速比
 
-    def __init__(self, cfg: BigWheelEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(
+        self,
+        cfg: BigWheelCFlatEnvCfg | BigWheelCRoughEnvCfg,
+        render_mode: str | None = None,
+        **kwargs,
+    ):
         super().__init__(cfg, render_mode, **kwargs)
 
         self._innerWheel_left_dof_idx, _ = self.bigWheel.find_joints(
@@ -120,24 +62,12 @@ class BigWheelEnv(DirectRLEnv):
         self._outerWheel_right_dof_idx, _ = self.bigWheel.find_joints(
             self.cfg.outerWheel_right_dof_name
         )
-
-        self.actions = torch.zeros(
-            self.num_envs,
-            4,
-            device=self.device,
-        )
-        self.previous_actions = torch.zeros(
-            self.num_envs,
-            4,
-            device=self.device,
-        )
-
+        self.actions = torch.zeros(self.num_envs, 4, device=self.device)
+        self.previous_actions = torch.zeros(self.num_envs, 4, device=self.device)
         self.action_scale_inner = self.cfg.action_scale_inner
         self.action_scale_outer = self.cfg.action_scale_outer
-
         self.joint_pos = self.bigWheel.data.joint_pos
         self.joint_vel = self.bigWheel.data.joint_vel
-
         # X linear velocity and yaw angular velocity commands hight
         self._commands = torch.zeros(self.num_envs, 3, device=self.device)
         self.theta = torch.zeros(self.num_envs, 2, device=self.device)
@@ -152,8 +82,8 @@ class BigWheelEnv(DirectRLEnv):
             for key in [
                 "track_lin_vel_xy_exp",
                 "track_ang_vel_z_exp",
-                "track_velocity_coupling_reward",
-                "track_height_reward",
+                # "track_velocity_coupling_reward",
+                # "track_height_reward",
                 "lin_vel_z_l2",
                 "ang_vel_xy_l2",
                 "dof_torques_inner_l2",
@@ -167,9 +97,12 @@ class BigWheelEnv(DirectRLEnv):
         }
 
     def _setup_scene(self):
-        self.bigWheel = Articulation(self.cfg.robot_cfg)
+        self.bigWheel = Articulation(self.cfg.robot)
         # add ground plane
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        # spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        self.cfg.terrain.num_envs = self.scene.cfg.num_envs
+        self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
+        self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
         # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[])
@@ -186,42 +119,10 @@ class BigWheelEnv(DirectRLEnv):
         self.keyboard_controller = Se3Keyboard(
             pos_sensitivity=0.05, rot_sensitivity=0.1
         )
-        # add markers
-        goal_vel_visualizer_cfg: VisualizationMarkersCfg = (
-            GREEN_ARROW_X_MARKER_CFG.replace(prim_path="/Visuals/Command/velocity_goal")
-        )
-        current_vel_visualizer_cfg: VisualizationMarkersCfg = (
-            BLUE_ARROW_X_MARKER_CFG.replace(
-                prim_path="/Visuals/Command/velocity_current"
-            )
-        )
-        current_height_visualizer_cfg = VisualizationMarkersCfg(
-            prim_path="/Visuals/Command/height_current",
-            markers={
-                "marker": sim_utils.SphereCfg(
-                    radius=0.025,
-                    visual_material=sim_utils.PreviewSurfaceCfg(
-                        diffuse_color=(1.0, 0.0, 0.0)
-                    ),
-                )
-            },
-        )
-        goal_height_visualizer_cfg = VisualizationMarkersCfg(
-            prim_path="/Visuals/Command/height_goal",
-            markers={
-                "marker": sim_utils.SphereCfg(
-                    radius=0.025,
-                    visual_material=sim_utils.PreviewSurfaceCfg(
-                        diffuse_color=(0.0, 1.0, 0.0)
-                    ),
-                )
-            },
-        )
-
-        self.goal_marker = VisualizationMarkers(goal_vel_visualizer_cfg)
-        self.current_marker = VisualizationMarkers(current_vel_visualizer_cfg)
-        self.goal_height_marker = VisualizationMarkers(goal_height_visualizer_cfg)
-        self.current_height_marker = VisualizationMarkers(current_height_visualizer_cfg)
+        # 添加指令UI
+        self.markVisualizer = MarkVisualizer()
+        # 获取奖励配置
+        self.rwd = TrainRewards()
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions[:, :2] = self.action_scale_inner * actions.clone()[:, :2]
@@ -233,39 +134,18 @@ class BigWheelEnv(DirectRLEnv):
             if gripper_action:
                 self._commands[:, 2] = 0.065
             else:
-                self._commands[:, 2] = 0.380
+                self._commands[:, 2] = self.MAX_HEIGHT
             print(f"commands: {self._commands[0]}")
             # print(f"state: {self.bigWheel.data.root_vel_w[:,0], self.bigWheel.data.root_ang_vel_b[:,2]},self.bigWheel.data.root_pos_w[:,2]")
         #! 添加指令UI
-        goal_marker_translations = self.bigWheel.data.root_pos_w + torch.tensor(
-            [0, 0, 0.5], device=self.device
-        ).repeat(self.num_envs, 1)
-        current_marker_translations = self.bigWheel.data.root_pos_w + torch.tensor(
-            [0, 0, 0.3], device=self.device
-        ).repeat(self.num_envs, 1)
-        height_goal_transelations = self.bigWheel.data.root_pos_w
-        height_current_transelations = self.bigWheel.data.root_pos_w
-        marker_orientations = self.bigWheel.data.root_quat_w
-        goal_scale = torch.tensor([0.5, 0.2, 0.2], device=self.device).repeat(
-            self.num_envs, 1
+        self.markVisualizer.update_mark(
+            self._commands,
+            self.bigWheel.data.root_pos_w,
+            self.bigWheel.data.root_quat_w,
+            self.bigWheel.data.root_lin_vel_b[:, 0],
+            self.num_envs,
+            self.device,
         )
-        current_scale = torch.tensor([0.5, 0.2, 0.2], device=self.device).repeat(
-            self.num_envs, 1
-        )
-        goal_scale[:, 0] = (self._commands[:, 0] / self.MAX_LIN_VEL_X) * 0.5
-        current_scale[:, 0] = (
-            self.bigWheel.data.root_lin_vel_b[:, 0] / self.MAX_LIN_VEL_X
-        ) * 0.5
-        height_goal_transelations[:, 2] = self._commands[:, 2]
-        height_current_transelations[:, 2] = self.bigWheel.data.root_pos_w[:, 2]
-        self.goal_marker.visualize(
-            goal_marker_translations, marker_orientations, goal_scale
-        )
-        self.current_marker.visualize(
-            current_marker_translations, marker_orientations, current_scale
-        )
-        self.goal_height_marker.visualize(height_goal_transelations)
-        self.current_height_marker.visualize(height_current_transelations)
 
     def _apply_action(self) -> None:
         # self.actions = torch.zeros_like(self.actions)
@@ -333,116 +213,14 @@ class BigWheelEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        #! 线速度跟踪
-        lin_vel_error = torch.square(
-            self._commands[:, 0] - self.bigWheel.data.root_lin_vel_b[:, 0]
+        rewards = self.rwd.getReward(
+            self._commands,
+            self.bigWheel,
+            self.actions,
+            self.previous_actions,
+            self.step_dt,
         )
-        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
-        #! yaw 角速度跟踪
-        yaw_rate_error = torch.square(
-            self._commands[:, 1] - self.bigWheel.data.root_ang_vel_b[:, 2]
-        )
-        yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.5)
-        #! 高度跟踪 计算目标高度与实际高度的误差
-        height_error = torch.abs(
-            self._commands[:, 2] - self.bigWheel.data.root_pos_w[:, 2]
-        )
-        #! 将误差线性映射到奖励范围
-        height_error_mapped = 1.0 - height_error / 0.1575
-
-        #! 将奖励值限制在 [0.0, 1.0] 范围内
-        height_error_mapped = torch.clamp(height_error_mapped, 0.0, 1.0)
-
-        #! 垂直速度惩罚
-        z_vel_error = torch.square(self.bigWheel.data.root_lin_vel_b[:, 2]) * 0.5
-
-        #! pitch/roll 角速度惩罚
-        ang_vel_error = torch.sum(
-            torch.square(self.bigWheel.data.root_ang_vel_b[:, :2]), dim=1
-        )
-        #! 内轮关节扭矩惩罚
-        joint_torques_inner = torch.sum(
-            torch.square(self.bigWheel.data.applied_torque[:, :2]), dim=1
-        )
-        #! 外轮关节扭矩惩罚
-        joint_torques_outer = torch.sum(
-            torch.square(self.bigWheel.data.applied_torque[:, 2:]), dim=1
-        )
-        #! 内轮关节加速度惩罚
-        joint_accel_inner = torch.sum(
-            torch.square(self.bigWheel.data.joint_acc[:, :2]), dim=1
-        )
-        #! 外轮关节加速度惩罚
-        joint_accel_outer = torch.sum(
-            torch.square(self.bigWheel.data.joint_acc[:, 2:]), dim=1
-        )
-        #! 内轮动作变化速率惩罚
-        action_rate_inner = torch.sum(
-            torch.square(self.actions[:, :2] - self.previous_actions[:, :2]), dim=1
-        )
-        #! 外轮动作变化速率惩罚
-        action_rate_outer = torch.sum(
-            torch.square(self.actions[:, 2:] - self.previous_actions[:, 2:]), dim=1
-        )
-        #! pitch/roll 与地面角度惩罚
-        flat_orientation = torch.sum(
-            torch.square(self.bigWheel.data.projected_gravity_b[:, :2]), dim=1
-        )
-        #! 速度耦合奖励
-        velocity_coupling_reward = torch.exp(-lin_vel_error / 0.5) * torch.exp(
-            -yaw_rate_error / 0.25
-        )
-
-        rewards = {
-            "track_lin_vel_xy_exp": lin_vel_error_mapped
-            * self.cfg.lin_vel_reward_scale
-            * self.step_dt,
-            "track_ang_vel_z_exp": yaw_rate_error_mapped
-            * self.cfg.yaw_rate_reward_scale
-            * self.step_dt,
-            "track_velocity_coupling_reward": velocity_coupling_reward
-            * self.cfg.velocity_coupling_reward_scale
-            * self.step_dt,
-            "track_height_reward": height_error_mapped
-            * self.cfg.height_reward_scale
-            * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
-            "ang_vel_xy_l2": ang_vel_error
-            * self.cfg.ang_vel_reward_scale
-            * self.step_dt,
-            "dof_torques_inner_l2": joint_torques_inner
-            * self.cfg.joint_torque_reward_scale_inner
-            * self.step_dt,
-            "dof_torques_outer_l2": joint_torques_outer
-            * self.cfg.joint_torque_reward_scale_outer
-            * self.step_dt,
-            "dof_acc_inner_l2": joint_accel_inner
-            * self.cfg.joint_accel_reward_scale_inner
-            * self.step_dt,
-            "dof_acc_outer_l2": joint_accel_outer
-            * self.cfg.joint_accel_reward_scale_outer
-            * self.step_dt,
-            "action_rate_inner_l2": action_rate_inner
-            * self.cfg.action_rate_reward_scale_inner
-            * self.step_dt,
-            "action_rate_outer_l2": action_rate_outer
-            * self.cfg.action_rate_reward_scale_outer
-            * self.step_dt,
-            "flat_orientation_l2": flat_orientation
-            * self.cfg.flat_orientation_reward_scale
-            * self.step_dt,
-        }
-        # reward_values = torch.stack(list(rewards.values()))
-        # max_abs_reward = torch.max(torch.abs(reward_values))
-
-        # # 避免除以零
-        # max_abs_reward = torch.clamp(max_abs_reward, min=1e-6)
-
-        # # 归一化奖励值
-        # normalized_rewards = reward_values / max_abs_reward
-
         #! 汇总奖励
-        # reward = torch.sum(normalized_rewards, dim=0)
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
         for key, value in rewards.items():
@@ -476,34 +254,25 @@ class BigWheelEnv(DirectRLEnv):
         self.previous_actions[env_ids] = 0.0
         # 新的 episode 时，随机生成指令
         if self.PLAY == 0:
-            #! x方向速度生成范围在 [0, 10] 的随机数
+            #! x方向速度生成的随机数
             self._commands[env_ids, 0] = torch.zeros_like(
-                self._commands[env_ids, 0]
-            ).uniform_(0.0, 10.0) * (
-                torch.randint(
-                    0,
-                    2,
-                    self._commands[env_ids, 0].shape,
-                    device=self.device,
-                )
-                * 2
-                - 1
-            )
-            #! w方向速度生成范围在 [-0.5, 0.5] 的随机数
+                self._commands[env_ids, 1]
+            ).uniform_(-self.MAX_LIN_VEL_X, self.MAX_LIN_VEL_X)
+            #! w方向速度生成随机数
             self._commands[env_ids, 1] = torch.zeros_like(
                 self._commands[env_ids, 1]
-            ).uniform_(-0.5, 0.5)
-
-            #! 高度生成范围在 [0.065, 0.380] 的随机数
-            self._commands[env_ids, 2] = torch.tensor(
-                [0.065, 0.380], device=self.device
-            )[torch.randint(0, 2, (len(env_ids),))]
+            ).uniform_(-self.MAX_ANGLE_VEL_Z, self.MAX_ANGLE_VEL_Z)
+            #! 高度生成随机数
+            # self._commands[env_ids, 2] = torch.tensor(
+            #     [self.MIN_HEIGHT, self.MAX_HEIGHT], device=self.device
+            # )[torch.randint(0, 2, (len(env_ids),))]
 
         # 重置内轮关节位置
         joint_pos = self.bigWheel.data.default_joint_pos[env_ids]
         joint_vel = self.bigWheel.data.default_joint_vel[env_ids]
         default_root_state = self.bigWheel.data.default_root_state[env_ids]
-        default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        # default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         self.bigWheel.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self.bigWheel.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self.bigWheel.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
