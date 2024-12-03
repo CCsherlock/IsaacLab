@@ -8,25 +8,26 @@ from __future__ import annotations
 # import math
 import torch
 from collections.abc import Sequence
-
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation
 from omni.isaac.lab.envs import DirectRLEnv
-from omni.isaac.lab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane  # noqa: F401
+from omni.isaac.lab.sim.spawners.from_files import (
+    GroundPlaneCfg,  # noqa: F401
+    spawn_ground_plane,  # noqa: F401
+)
 from omni.isaac.lab.devices.keyboard import Se3Keyboard
 
 # from omni.isaac.lab.utils.math import sample_uniform
 from omni.isaac.lab.sensors import ContactSensor
 import omni.isaac.lab.utils.math as math_utils
-import sys
-
-
-sys.path.append(
-    r"D:\Master\program\IsaacLab\source\extensions\omni.isaac.lab_tasks\omni\isaac\lab_tasks\direct\bigWheel"
+from cfg.bigWheel_env_cfg import (
+    BigWheelCFlatEnvCfg,
+    BigWheelCRoughEnvCfg,
+    BigWheelEnvCfg,  # noqa: F401
 )
-from bigWheel_env_cfg import BigWheelCFlatEnvCfg, BigWheelCRoughEnvCfg, BigWheelEnvCfg  # noqa: F401
-from trainRewardsCfg import TrainRewards
-from markVisualizer import MarkVisualizer
+from cfg.trainRewardsCfg import TrainRewards
+from visualize.markVisualizer import MarkVisualizer
+
 
 class BigWheelEnv(DirectRLEnv):
     cfg: BigWheelCFlatEnvCfg | BigWheelCRoughEnvCfg
@@ -34,7 +35,7 @@ class BigWheelEnv(DirectRLEnv):
     RIGHT = 1
     PLAY = 0
     MAX_LIN_VEL_X = 10.0
-    MAX_ANGLE_VEL_Z = 0.5
+    MAX_ANGLE_VEL_Z = 0.1
     MAX_HEIGHT = 0.4
     MIN_HEIGHT = 0.065
     # 物理参数
@@ -178,20 +179,20 @@ class BigWheelEnv(DirectRLEnv):
             + self.bigWheel.data.root_ang_vel_b[:, 1].squeeze()
         )
         #! 计算底盘速度 = (左外轮速度 + 右外轮速度) * 外轮半径 * 0.5
-        self.velocity_chassis = (
-            (
-                self.bigWheel.data.joint_vel[
-                    :, self._outerWheel_left_dof_idx
-                ].unsqueeze(1)
-                + self.bigWheel.data.joint_vel[
-                    :, self._outerWheel_right_dof_idx
-                ].unsqueeze(1)
-            )
-            * self.outerWheel_radius
-            * 0.5
-        )
-        self.velocity_chassis = self.velocity_chassis.squeeze(1)
-
+        # self.velocity_chassis = (
+        #     (
+        #         self.bigWheel.data.joint_vel[
+        #             :, self._outerWheel_left_dof_idx
+        #         ].unsqueeze(1)
+        #         + self.bigWheel.data.joint_vel[
+        #             :, self._outerWheel_right_dof_idx
+        #         ].unsqueeze(1)
+        #     )
+        #     * self.outerWheel_radius
+        #     * 0.5
+        # )
+        # self.velocity_chassis = self.velocity_chassis.squeeze(1)
+        self.velocity_chassis = self.bigWheel.data.root_lin_vel_b[:, 0].unsqueeze(1)
         obs = torch.cat(
             [
                 tensor
@@ -294,3 +295,4 @@ class BigWheelEnv(DirectRLEnv):
             self.reset_time_outs[env_ids]
         ).item()
         self.extras["log"].update(extras)
+

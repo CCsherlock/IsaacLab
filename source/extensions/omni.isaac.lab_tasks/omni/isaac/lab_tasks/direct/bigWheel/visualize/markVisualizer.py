@@ -73,9 +73,11 @@ class MarkVisualizer:
         ).repeat(num_envs, 1)
         marker_orientations = robot_rot
         goal_scale = torch.tensor([0.1, 0.1, 0.1], device=_device).repeat(num_envs, 1)
-        current_scale = torch.tensor([0.1, 0.1, 0.1], device=_device).repeat(num_envs, 1)
-        goal_scale[:, 0] = (command[:, 0] / self.MAX_LIN_VEL_X) * 0.5
-        current_scale[:, 0] = (robot_vel / self.MAX_LIN_VEL_X) * 0.5
+        current_scale = torch.tensor([0.1, 0.1, 0.1], device=_device).repeat(
+            num_envs, 1
+        )
+        goal_scale[:, 0] = command[:, 0] / self.MAX_LIN_VEL_X
+        current_scale[:, 0] = robot_vel / self.MAX_LIN_VEL_X
         height_goal_transelations[:, 2] = command[:, 2]
         height_current_transelations[:, 2] = robot_pos[:, 2]
         self.goal_marker.visualize(
@@ -84,5 +86,5 @@ class MarkVisualizer:
         self.current_marker.visualize(
             current_marker_translations, marker_orientations, current_scale
         )
-        self.goal_height_marker.visualize(height_goal_transelations)
-        self.current_height_marker.visualize(height_current_transelations)
+        # self.goal_height_marker.visualize(height_goal_transelations)
+        # self.current_height_marker.visualize(height_current_transelations)

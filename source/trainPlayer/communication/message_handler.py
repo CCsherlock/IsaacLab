@@ -2,8 +2,8 @@ import socket
 import threading
 import struct
 import logging
-
-
+from trainPlayer.dataRecord.dataRecorderCfg import DataRecordCfg
+import time
 class MessageReceive:
     def __init__(self):
         self.euler_angle = [0,0,0]
@@ -21,6 +21,7 @@ class MessageHandler:
         self.host = host
         self.port = port
         self.msg = MessageReceive()
+        self.msg_dict = DataRecordCfg()
         self.receiveFlag = False
         # 创建服务器套接字
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -163,36 +164,50 @@ class MessageHandler:
         :param data: 原始接收到的数据包
         :return: MessageSend 对象
         """
+        self.msg_dict.dict["time"].append(time.time())
         # 解析欧拉角（3个 float）
         self.msg.euler_angle = struct.unpack(">3f", float_data[:12])  # 3 * 4 = 12字节
-
+        self.msg_dict.dict["euler_angle_roll"].append(self.msg.euler_angle[0])
+        self.msg_dict.dict["euler_angle_pitch"].append(self.msg.euler_angle[1])
+        self.msg_dict.dict["euler_angle_yaw"].append(self.msg.euler_angle[2])
         # 解析重力投影（3个 float）
         self.msg.projected_gravity_b = struct.unpack(
             ">3f", float_data[12:24]
         )  # 3 * 4 = 12字节
-
+        self.msg_dict.dict["projected_gravity_b_x"].append(self.msg.projected_gravity_b[0])
+        self.msg_dict.dict["projected_gravity_b_y"].append(self.msg.projected_gravity_b[1])
+        self.msg_dict.dict["projected_gravity_b_z"].append(self.msg.projected_gravity_b[2])
         # 解析底盘速度（1个 float）
         self.msg.velocity_chassis = struct.unpack(
             ">1f", float_data[24:28]
         )  # 1 * 4 = 4字节
-
+        self.msg_dict.dict["velocity_chassis"].append(self.msg.velocity_chassis[0])
         # 解析机体角速度（3个 float）
         self.msg.root_ang_vel_b = struct.unpack(
             ">3f", float_data[28:40]
         )  # 3 * 4 = 12字节
-
+        self.msg_dict.dict["root_ang_vel_b_x"].append(self.msg.root_ang_vel_b[0])
+        self.msg_dict.dict["root_ang_vel_b_y"].append(self.msg.root_ang_vel_b[1])
+        self.msg_dict.dict["root_ang_vel_b_z"].append(self.msg.root_ang_vel_b[2])
         # 解析抬升角角速度（2个 float）
         self.msg.theta_vel = struct.unpack(">2f", float_data[40:48])  # 2 * 4 = 8字节
-
+        self.msg_dict.dict["theta_vel_left"].append(self.msg.theta_vel[0])
+        self.msg_dict.dict["theta_vel_right"].append(self.msg.theta_vel[1])
         # 解析抬升角角度（2个 float）
         self.msg.theta = struct.unpack(">2f", float_data[48:56])  # 2 * 4 = 8字节
-
+        self.msg_dict.dict["theta_left"].append(self.msg.theta[0])
+        self.msg_dict.dict["theta_right"].append(self.msg.theta[1])
         # 解析指令（3个 float）
         self.msg.commands = struct.unpack(">3f", float_data[56:68])  # 3 * 4 = 12字节
-
+        self.msg_dict.dict["command_x"].append(self.msg.commands[0])
+        self.msg_dict.dict["command_w"].append(self.msg.commands[1])
+        self.msg_dict.dict["command_z"].append(self.msg.commands[2])
         # 解析动作（4个 float）
         self.msg.actions = struct.unpack(">4f", float_data[68:84])  # 4 * 4 = 16字节
-
+        self.msg_dict.dict["action_in_left"].append(self.msg.actions[0])
+        self.msg_dict.dict["action_in_right"].append(self.msg.actions[1])
+        self.msg_dict.dict["action_out_left"].append(self.msg.actions[2])
+        self.msg_dict.dict["action_out_right"].append(self.msg.actions[3])
         # print(f"欧拉角: {self.msg.euler_angle}")
         # print(f"重力投影: {self.msg.projected_gravity_b}")
         # print(f"底盘速度: {self.msg.velocity_chassis}")

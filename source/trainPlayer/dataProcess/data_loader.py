@@ -1,5 +1,5 @@
 import torch
-from communication.message_handler import MessageReceive
+from trainPlayer.communication.message_handler import MessageReceive
 class DataLoader:
     def __init__(self, source: str):
         self.source = source

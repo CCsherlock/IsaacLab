@@ -19,24 +19,33 @@ from omni.isaac.lab.utils import configclass
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets.bigWheel import BIGWHEEL_CFG  # isort: skip
-from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from omni.isaac.lab.terrains.config.rough import (
+    ROUGH_TERRAINS_CFG,  # isort: skip  # noqa: F401
+)
+import sys
+
+sys.path.append(
+    r"D:\Master\program\IsaacLab\source\extensions\omni.isaac.lab_tasks\omni\isaac\lab_tasks\direct\bigWheel"
+)
+from .terrainGenerator import BIG_WHEEL_TERRAINS_CFG
+# from .mdp.curriculums import bigWheel_terrain_levels_vel  # noqa: F401
 
 
 @configclass
 class EventCfg:
     """Configuration for randomization."""
 
-    physics_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("bigWheel", body_names=".*"),
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 64,
-        },
-    )
+    # physics_material = EventTerm(
+    #     func=mdp.randomize_rigid_body_material,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("bigWheel", body_names=".*"),
+    #         "static_friction_range": (0.8, 0.8),
+    #         "dynamic_friction_range": (0.6, 0.6),
+    #         "restitution_range": (0.0, 0.0),
+    #         "num_buckets": 64,
+    #     },
+    # )
 
     add_base_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
@@ -45,6 +54,17 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("bigWheel", body_names="body"),
             "mass_distribution_params": (-0.5, 0.5),
             "operation": "add",
+            "distribution": "gaussian",
+        },
+    )
+    # interval
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={
+            "velocity_range": {"x": (-0.5, 0.5)},
+            "asset_cfg": SceneEntityCfg("bigWheel"),
         },
     )
 
@@ -82,6 +102,19 @@ class BigWheelCFlatEnvCfg(DirectRLEnvCfg):
         update_period=0.005,
         track_air_time=False,
     )
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="plane",
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
+        debug_vis=False,
+    )
     innerWheel_left_dof_name = "innerWheelLeft_joint"
     innerWheel_right_dof_name = "innerWheelRight_joint"
     outerWheel_left_dof_name = "outerWheelLeft_joint"
@@ -103,7 +136,7 @@ class BigWheelCRoughEnvCfg(BigWheelCFlatEnvCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG,
+        terrain_generator=BIG_WHEEL_TERRAINS_CFG,
         max_init_terrain_level=9,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
